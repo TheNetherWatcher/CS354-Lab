@@ -1,21 +1,21 @@
-% Possible knight moves
 jump(N, X/Y, U/V) :-
-    member((DX, DY), [(2, 1), (1, 2), (-1, 2), (-2, 1), (-2, -1), (-1, -2), (1, -2), (2, -1)]),
-    U is X + DX, U > 0, U =< N,
-    V is Y + DY, V > 0, V =< N.
+    member((DX,DY),[(2,1),(1,2),(-1,2),(-2,1),(-2,-1),(-1,-2),(1,-2),(2,-1)]),
+    U is X + DX,
+    V is Y + DY,
 
-% Solve knight's tour
-knights_tour(N, Path) :-
-    N2 is N * N,
-    Path = [1/1 | Rest], % Start from top-left corner
-    knights_tour(N, [1/1], Rest, N2).
+    U > 0, U =< N,
+    V > 0, V =< N.
 
-knights_tour(_, Visited, [], 1) :-
-    length(Visited, 1). % Base case: all squares are visited.
+knight_tour(N, Path, Path) :-
+    length(Path, L),
+    L =:= N * N.
 
-knights_tour(N, Visited, [Next | Rest], SquaresLeft) :-
-    Visited = [Current | _],
-    jump(N, Current, Next),
-    \+ member(Next, Visited),
-    NewSquaresLeft is SquaresLeft - 1,
-    knights_tour(N, [Next | Visited], Rest, NewSquaresLeft).
+knight_tour(N, Visited, Path) :-
+    Visited = [X/Y | _],                    
+    jump(N, X/Y, U/V),                     
+    \+ member(U/V, Visited),               
+    knight_tour(N, [U/V | Visited], Path). 
+
+solve_knight_tour(N, Path) :-
+    StartX = 1, StartY = 1,               
+    knight_tour(N, [StartX/StartY], Path).
