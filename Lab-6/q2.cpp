@@ -1,177 +1,141 @@
-// Question 2: Iris Classification
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <random>
-#include <fstream>
-#include <sstream>
-
+#include <bits/stdc++.h>
 using namespace std;
 
-double sigmoid(double x) {
-    return 1.0 / (1.0 + exp(-x));
+#define NUM_EPOCHS 35
+#define LEARNING_RATE 0.0001
+#define NUM_HIDDEN_NEURONS 15
+
+// Activation function
+inline double activate(double value) {
+    return 1.0 / (1.0 + exp(-value));
 }
 
-double sigmoid_derivative(double x) {
-    double sig = sigmoid(x);
-    return sig * (1.0 - sig);
+// Derivative of activation function
+inline double activation_derivative(double value) {
+    return value * (1 - value);
 }
 
-class NeuralNetwork {
-private:
-    vector<int> layers;
-    vector<vector<vector<double>>> weights;
-    vector<vector<double>> biases;
-    double learning_rate;
-    random_device rd;
-    mt19937 gen;
-    uniform_real_distribution<> dis;
-
+class MLPClassifier {
 public:
-    NeuralNetwork(const vector<int>& layer_sizes, double lr = 0.0001) 
-        : layers(layer_sizes), learning_rate(lr), gen(rd()), dis(-1.0, 1.0) {
-        
-        for (size_t i = 0; i < layers.size() - 1; ++i) {
-            vector<vector<double>> layer_weights;
-            for (int j = 0; j < layers[i + 1]; ++j) {
-                vector<double> neuron_weights;
-                for (int k = 0; k < layers[i]; ++k) {
-                    neuron_weights.push_back(dis(gen));
+    vector<vector<double>> input_hidden_weights;
+    vector<double> hidden_output_weights;
+    int num_inputs, num_hidden, num_outputs;
+
+    MLPClassifier(int num_inputs, int num_hidden, int num_outputs) {
+        this->num_inputs = num_inputs;
+        this->num_hidden = num_hidden;
+        this->num_outputs = num_outputs;
+
+        input_hidden_weights.resize(num_inputs, vector<double>(num_hidden));
+        hidden_output_weights.resize(num_hidden);
+
+        random_device rd;
+        mt19937 generator(rd());
+        uniform_real_distribution<double> weight_dist(-1, 1);
+
+        for (auto &layer : input_hidden_weights)
+            for (auto &weight : layer)
+                weight = weight_dist(generator);
+
+        for (auto &weight : hidden_output_weights)
+            weight = weight_dist(generator);
+    }
+
+    void train(vector<vector<double>> &train_data, vector<int> &train_labels) {
+        for (int epoch = 0; epoch < NUM_EPOCHS; ++epoch) {
+            double total_loss = 0.0;
+            for (size_t sample = 0; sample < train_data.size(); ++sample) {
+                vector<double> hidden_layer(num_hidden, 0.0);
+                double output_layer = 0.0;
+
+                for (int j = 0; j < num_hidden; ++j) {
+                    for (int k = 0; k < num_inputs; ++k)
+                        hidden_layer[j] += train_data[sample][k] * input_hidden_weights[k][j];
+                    hidden_layer[j] = activate(hidden_layer[j]);
                 }
-                layer_weights.push_back(neuron_weights);
+
+                for (int j = 0; j < num_hidden; ++j)
+                    output_layer += hidden_layer[j] * hidden_output_weights[j];
+                output_layer = activate(output_layer);
+
+                double error = train_labels[sample] - output_layer;
+                total_loss += 0.5 * error * error;
+
+                double output_delta = error * activation_derivative(output_layer);
+                vector<double> hidden_deltas(num_hidden);
+
+                for (int j = 0; j < num_hidden; ++j)
+                    hidden_deltas[j] = output_delta * hidden_output_weights[j] * activation_derivative(hidden_layer[j]);
+
+                for (int j = 0; j < num_hidden; ++j)
+                    hidden_output_weights[j] += LEARNING_RATE * output_delta * hidden_layer[j];
+
+                for (int j = 0; j < num_hidden; ++j)
+                    for (int k = 0; k < num_inputs; ++k)
+                        input_hidden_weights[k][j] += LEARNING_RATE * hidden_deltas[j] * train_data[sample][k];
             }
-            weights.push_back(layer_weights);
-            
-            vector<double> layer_biases;
-            for (int j = 0; j < layers[i + 1]; ++j) {
-                layer_biases.push_back(dis(gen));
-            }
-            biases.push_back(layer_biases);
+            cout << "Epoch " << epoch + 1 << ": Loss = " << total_loss / train_data.size() << endl;
         }
     }
 
-    vector<double> forward(const vector<double>& input) {
-        vector<vector<double>> activations = {input};
-        
-        for (size_t i = 0; i < weights.size(); ++i) {
-            vector<double> layer_output;
-            for (size_t j = 0; j < weights[i].size(); ++j) {
-                double sum = biases[i][j];
-                for (size_t k = 0; k < weights[i][j].size(); ++k) {
-                    sum += weights[i][j][k] * activations.back()[k];
-                }
-                layer_output.push_back(sigmoid(sum));
-            }
-            activations.push_back(layer_output);
-        }
-        
-        return activations.back();
-    }
+    int classify(vector<double> &sample) {
+        vector<double> hidden_layer(num_hidden, 0.0);
+        double output_layer = 0.0;
 
-    void backpropagate(const vector<double>& input, const vector<double>& target) {
-        vector<vector<double>> activations = {input};
-        vector<vector<double>> weighted_sums;
-        
-        for (size_t i = 0; i < weights.size(); ++i) {
-            vector<double> layer_output;
-            vector<double> layer_sums;
-            for (size_t j = 0; j < weights[i].size(); ++j) {
-                double sum = biases[i][j];
-                for (size_t k = 0; k < weights[i][j].size(); ++k) {
-                    sum += weights[i][j][k] * activations.back()[k];
-                }
-                layer_sums.push_back(sum);
-                layer_output.push_back(sigmoid(sum));
-            }
-            weighted_sums.push_back(layer_sums);
-            activations.push_back(layer_output);
+        for (int j = 0; j < num_hidden; ++j) {
+            for (int k = 0; k < num_inputs; ++k)
+                hidden_layer[j] += sample[k] * input_hidden_weights[k][j];
+            hidden_layer[j] = activate(hidden_layer[j]);
         }
 
-        vector<vector<double>> deltas;
-        vector<double> output_delta;
-        for (size_t i = 0; i < activations.back().size(); ++i) {
-            double error = activations.back()[i] - target[i];
-            output_delta.push_back(error * sigmoid_derivative(weighted_sums.back()[i]));
-        }
-        deltas.push_back(output_delta);
-        
-        for (int i = weights.size() - 2; i >= 0; --i) {
-            vector<double> layer_delta;
-            for (size_t j = 0; j < weights[i].size(); ++j) {
-                double error = 0.0;
-                for (size_t k = 0; k < weights[i + 1].size(); ++k) {
-                    error += weights[i + 1][k][j] * deltas.front()[k];
-                }
-                layer_delta.push_back(error * sigmoid_derivative(weighted_sums[i][j]));
-            }
-            deltas.insert(deltas.begin(), layer_delta);
-        }
+        for (int j = 0; j < num_hidden; ++j)
+            output_layer += hidden_layer[j] * hidden_output_weights[j];
+        output_layer = activate(output_layer);
 
-        for (size_t i = 0; i < weights.size(); ++i) {
-            for (size_t j = 0; j < weights[i].size(); ++j) {
-                for (size_t k = 0; k < weights[i][j].size(); ++k) {
-                    weights[i][j][k] -= learning_rate * deltas[i][j] * activations[i][k];
-                }
-                biases[i][j] -= learning_rate * deltas[i][j];
-            }
-        }
+        return output_layer > 0.5 ? 1 : 0;
     }
 };
 
-vector<pair<vector<double>, vector<double>>> load_iris_data(const string& filename) {
-    vector<pair<vector<double>, vector<double>>> data;
-    ifstream file(filename);
+vector<vector<double>> read_dataset(const string &file_path, vector<int> &labels) {
+    ifstream file(file_path);
+    vector<vector<double>> dataset;
     string line;
-    
-    getline(file, line);
-    
+
     while (getline(file, line)) {
         stringstream ss(line);
-        string value;
-        vector<double> features;
+        vector<double> features(4);
+        for (int i = 0; i < 4; ++i)
+            ss >> features[i], ss.ignore();
         
-        for (int i = 0; i < 4; ++i) {
-            getline(ss, value, ',');
-            features.push_back(stod(value));
-        }
-        
-        getline(ss, value, ',');
-        vector<double> target = {value == "setosa" ? 0.0 : 1.0};
-        
-        data.push_back({features, target});
+        string label;
+        ss >> label;
+        labels.push_back(label == "setosa" ? 0 : 1);
+        dataset.push_back(features);
     }
-    
-    return data;
+
+    for (int i = 0; i < 4; ++i) {
+        double max_value = 0.0;
+        for (auto &sample : dataset)
+            max_value = max(max_value, sample[i]);
+        for (auto &sample : dataset)
+            sample[i] /= max_value;
+    }
+    return dataset;
 }
 
 int main() {
-    cout << "Iris Classification Neural Network\n";
-    auto data = load_iris_data("iris.csv");
-    
-    // Neural network with 4 input features, 10 hidden nodes, 1 output node
-    NeuralNetwork nn({4, 10, 1}, 0.0001);
-    
-    cout << "Training for 35 epochs...\n";
-    for (int epoch = 0; epoch < 35; ++epoch) {
-        double total_error = 0.0;
-        int correct_predictions = 0;
-        
-        for (const auto& sample : data) {
-            auto output = nn.forward(sample.first);
-            nn.backpropagate(sample.first, sample.second);
-            total_error += pow(output[0] - sample.second[0], 2);
-            
-            // Calculate accuracy using 0.5 threshold
-            bool predicted = output[0] > 0.5;
-            bool actual = sample.second[0] > 0.5;
-            if (predicted == actual) correct_predictions++;
-        }
-        
-        double accuracy = (double)correct_predictions / data.size() * 100;
-        cout << "Epoch " << epoch + 1 
-             << ", Error: " << total_error / data.size()
-             << ", Accuracy: " << accuracy << "%\n";
-    }
-    
+    vector<int> train_labels, test_labels;
+    vector<vector<double>> train_data = read_dataset("iris_train.csv", train_labels);
+    vector<vector<double>> test_data = read_dataset("iris_test.csv", test_labels);
+
+    MLPClassifier model(4, NUM_HIDDEN_NEURONS, 1);
+    model.train(train_data, train_labels);
+
+    int correct_predictions = 0;
+    for (size_t i = 0; i < test_data.size(); ++i)
+        if (model.classify(test_data[i]) == test_labels[i])
+            ++correct_predictions;
+
+    cout << "Test Accuracy: " << (double)correct_predictions / test_data.size() * 100 << "%" << endl;
     return 0;
 }
